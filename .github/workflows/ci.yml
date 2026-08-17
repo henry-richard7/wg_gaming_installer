@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check wg_gaming_installer tests
+
+      - name: Black format check
+        run: black --check wg_gaming_installer tests
+
+      - name: isort check
+        run: isort --check-only wg_gaming_installer tests
+
+      - name: mypy type check
+        run: mypy wg_gaming_installer
+
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: pre-commit/action@v3.0.1
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest -v
+
+  e2e:
+    name: E2E (${{ matrix.distro }}-${{ matrix.version }}${{ matrix.userspace && ' userspace' || '' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: ubuntu
+            version: "22.04"
+            image: ubuntu:22.04
+            userspace: false
+          - distro: ubuntu
+            version: "24.04"
+            image: ubuntu:24.04
+            userspace: false
+          - distro: ubuntu
+            version: "26.04"
+            image: ubuntu:26.04
+            userspace: false
+          - distro: ubuntu
+            version: "24.04"
+            image: ubuntu:24.04
+            userspace: true
+          - distro: debian
+            version: "12"
+            image: debian:12
+            userspace: false
+          - distro: debian
+            version: "13"
+            image: debian:13
+            userspace: false
+          - distro: debian
+            version: "12"
+            image: debian:12
+            userspace: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build e2e image
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE=${{ matrix.image }} \
+            -t wg-e2e \
+            -f tests/e2e/Dockerfile \
+            .
+
+      - name: Start container (systemd as PID 1)
+        run: |
+          docker run -d \
+            --name wg-e2e \
+            --cap-add NET_ADMIN \
+            --cap-add NET_RAW \
+            --cap-add SYS_MODULE \
+            --cgroupns=host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            --tmpfs /run \
+            --tmpfs /run/lock \
+            --tmpfs /tmp \
+            ${{ matrix.userspace && '-e container=lxc' || '' }} \
+            wg-e2e
+
+      - name: Wait for systemd
+        run: |
+          for i in $(seq 1 60); do
+            docker exec wg-e2e test -S /run/systemd/private && exit 0
+            sleep 1
+          done
+          echo "systemd did not come up in time"
+          exit 1
+
+      - name: Run e2e test
+        run: docker exec wg-e2e /venv/bin/python /app/tests/e2e/run_e2e.py
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f wg-e2e || true

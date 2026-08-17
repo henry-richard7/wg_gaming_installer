@@ -25,7 +25,15 @@ cd wg_gaming_installer
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 pip install -e .
-python -m wg_gaming_installer.install_scripts
+wg-gaming-installer
+```
+
+If you want to manage an existing installation:
+
+```bash
+cd wg_gaming_installer
+source ./.venv/bin/activate
+wg-gaming-installer
 ```
 
 ## Why the Python version
@@ -40,8 +48,8 @@ Officially supported minimums:
 
 | Distribution | Minimum | Notes |
 |---|---:|---|
-| `ubuntu` | 20.10 | 22.04 recommended |
-| `debian` | 11 | Bullseye |
+| `ubuntu` | 22.04 | 26.04 recommended |
+| `debian` | 12 | Bullseye |
 
 Also commonly compatible: `centos`/`rocky`/`almalinux` (9), `fedora` (32), `arch` (rolling).
 
@@ -62,6 +70,7 @@ After installation, the interactive menu provides these actions:
 - Uninstall and remove generated files
 - List peers; show peer config + QR code
 - Add / Remove / Edit peers
+- Re-configure server (purges all settings and re-runs server configuration)
 
 ## Port forwarding
 
@@ -76,8 +85,11 @@ Important: do not forward ports already used by server-local services (SSH, etc.
 Recommended safe workflow:
 
 1. Stop the service from the management menu.
-2. Edit `wg_gaming_installer/exec_scripts.py` to change what the installer generates.
+2. Edit `wg_gaming_installer/exec_scripts.py` to change what the installer generates (WireGuard config, start/stop scripts, nftables rules).
+3. Edit the `Paths` dataclass in `wg_gaming_installer/install_scripts.py` to customize file locations (config folder, scripts, TUN device, shell).
 4. Restart the service using the management menu.
+
+The WireGuard MTU is prompted during install (default `1420`) and written to both the server `wg0.conf` and generated peer configs.
 
 ## Troubleshooting
 
