@@ -145,3 +145,14 @@ def test_create_nftables_config(tmp_path: Path) -> None:
     assert "dnat to fd42:42:42::2;" in content
     if os.name != "nt":
         assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_paths_properties() -> None:
+    from wg_gaming_installer.install_scripts import Paths
+
+    p = Paths()
+    assert p.nftables_conf_path is not None
+    assert p.nftables_conf_path.name == "wg.nft"
+    assert p.start_script_path.name == "wg_start.sh"
+    assert p.stop_script_path.name == "wg_stop.sh"
+    assert p.shared_files_folder is not None

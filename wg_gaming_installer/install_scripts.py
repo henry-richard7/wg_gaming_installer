@@ -102,6 +102,8 @@ class Paths:
         """
         Path to the nftables configuration file.
         """
+        return self.wg_conf_folder / "wg.nft"
+
     @property
     def shared_files_folder(self) -> Path:
         """
