@@ -66,10 +66,25 @@ Follow the step-by-step terminal prompts to configure network interfaces, add pe
 
 WireGuard Gaming Installer includes a built-in modern web control panel:
 
+- 🔒 **HTTP Basic Authentication**: Password-protected access (auto-generates a secure 16-character admin password if omitted).
+- 🛡️ **Security Hardened**: Protected with security HTTP response headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`).
 - 📊 **Real-time Server Metrics**: Status, Listen Port, Public IP, MTU, and Active Peers.
 - 📱 **QR Code & Config Download**: One-click WireGuard `.conf` file downloads and mobile QR code scanner.
 - 🎮 **Gaming Port Forwarding**: Effortlessly add and view nftables DNAT port forward rules per peer.
 - ⚡ **Instant Peer Management**: Add, edit, or delete peers visually.
+
+### Setting Custom Web Credentials
+
+Pass `--password` or set the `WG_WEB_PASSWORD` environment variable:
+
+```bash
+# Option 1: CLI Flags
+sudo $(which uv) run wg-gaming-web --username admin --password "MySecretPassword123"
+
+# Option 2: Environment Variable
+export WG_WEB_PASSWORD="MySecretPassword123"
+sudo $(which uv) run wg-gaming-web
+```
 
 ## Why the Python version
 

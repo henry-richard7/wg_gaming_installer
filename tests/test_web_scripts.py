@@ -1,5 +1,5 @@
 """
-Unit tests for WireGuard Gaming Web UI backend API routes.
+Unit tests for WireGuard Gaming Web UI backend API routes and security.
 """
 
 import sqlite3
@@ -19,6 +19,14 @@ from wg_gaming_installer.sqlite_scripts import (
     update_server_config,
     update_wg_config,
 )
+
+
+@pytest.fixture(autouse=True)
+def configure_test_auth() -> None:
+    """
+    Set test authentication credentials before each test.
+    """
+    web_scripts.set_auth_credentials("admin", "secret123", enabled=True)
 
 
 @pytest.fixture
@@ -58,7 +66,6 @@ def mock_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     conn.commit()
     conn.close()
 
-    # Monkeypatch _PATHS to point to tmp_path
     class MockPaths:
         wg_conf_folder = wg_folder
         server_conf_db_path = db_path
@@ -67,17 +74,36 @@ def mock_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return db_path
 
 
-def test_get_dashboard_html() -> None:
+def test_auth_required() -> None:
     client = TestClient(web_scripts.app)
-    response = client.get("/")
+
+    # 1. Unauthenticated request -> 401
+    unauth_res = client.get("/")
+    assert unauth_res.status_code == 401
+    assert "WWW-Authenticate" in unauth_res.headers
+
+    # 2. Invalid credentials -> 401
+    bad_res = client.get("/", auth=("admin", "wrong_password"))
+    assert bad_res.status_code == 401
+
+    # 3. Valid credentials -> 200
+    good_res = client.get("/", auth=("admin", "secret123"))
+    assert good_res.status_code == 200
+    assert "WireGuard Gaming Panel" in good_res.text
+
+
+def test_security_headers() -> None:
+    client = TestClient(web_scripts.app)
+    response = client.get("/", auth=("admin", "secret123"))
     assert response.status_code == 200
-    assert "WireGuard Gaming Panel" in response.text
-    assert "<!DOCTYPE html>" in response.text
+    assert response.headers.get("X-Frame-Options") == "DENY"
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    assert response.headers.get("X-XSS-Protection") == "1; mode=block"
 
 
 def test_get_status(mock_db: Path) -> None:
     client = TestClient(web_scripts.app)
-    response = client.get("/api/status")
+    response = client.get("/api/status", auth=("admin", "secret123"))
     assert response.status_code == 200
     data = response.json()
     assert data["server_configured"] is True
@@ -89,9 +115,10 @@ def test_get_status(mock_db: Path) -> None:
 
 def test_peer_crud_lifecycle(mock_db: Path) -> None:
     client = TestClient(web_scripts.app)
+    auth = ("admin", "secret123")
 
     # 1. Initially no peers
-    res = client.get("/api/peers")
+    res = client.get("/api/peers", auth=auth)
     assert res.status_code == 200
     assert res.json() == []
 
@@ -101,13 +128,13 @@ def test_peer_crud_lifecycle(mock_db: Path) -> None:
         "dns": ["1.1.1.1", "8.8.8.8"],
         "forward_ports": ["25565", "27015-27030"],
     }
-    create_res = client.post("/api/peers", json=add_payload)
+    create_res = client.post("/api/peers", json=add_payload, auth=auth)
     assert create_res.status_code == 200
     assert create_res.json()["status"] == "success"
     assert create_res.json()["name"] == "gamer-pc"
 
     # 3. Verify peer list
-    list_res = client.get("/api/peers")
+    list_res = client.get("/api/peers", auth=auth)
     assert list_res.status_code == 200
     peers = list_res.json()
     assert len(peers) == 1
@@ -115,12 +142,12 @@ def test_peer_crud_lifecycle(mock_db: Path) -> None:
     assert peers[0]["forward_ports"] == ["25565", "27015-27030"]
 
     # 4. Download config & QR code
-    conf_res = client.get("/api/peers/gamer-pc/config")
+    conf_res = client.get("/api/peers/gamer-pc/config", auth=auth)
     assert conf_res.status_code == 200
     assert "[Interface]" in conf_res.text
     assert "[Peer]" in conf_res.text
 
-    qr_res = client.get("/api/peers/gamer-pc/qr")
+    qr_res = client.get("/api/peers/gamer-pc/qr", auth=auth)
     assert qr_res.status_code == 200
     assert qr_res.json()["qr_url"].startswith("data:image/")
 
@@ -130,15 +157,15 @@ def test_peer_crud_lifecycle(mock_db: Path) -> None:
         "dns": ["9.9.9.9"],
         "forward_ports": ["7777"],
     }
-    put_res = client.put("/api/peers/gamer-pc", json=update_payload)
+    put_res = client.put("/api/peers/gamer-pc", json=update_payload, auth=auth)
     assert put_res.status_code == 200
 
-    list_res2 = client.get("/api/peers")
+    list_res2 = client.get("/api/peers", auth=auth)
     assert list_res2.json()[0]["forward_ports"] == ["7777"]
 
     # 6. Delete peer
-    del_res = client.delete("/api/peers/gamer-pc")
+    del_res = client.delete("/api/peers/gamer-pc", auth=auth)
     assert del_res.status_code == 200
 
-    list_res3 = client.get("/api/peers")
+    list_res3 = client.get("/api/peers", auth=auth)
     assert list_res3.json() == []

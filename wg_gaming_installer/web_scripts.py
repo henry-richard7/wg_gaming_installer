@@ -8,6 +8,7 @@ import argparse
 import base64
 import io
 import os
+import secrets
 from ipaddress import (
     IPv4Address,
     IPv4Interface,
@@ -19,8 +20,9 @@ from typing import Any
 
 import psutil
 import uvicorn
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
 from wg_gaming_installer.install_scripts import Paths, create_wg_peer_str
@@ -45,12 +47,68 @@ from wg_gaming_installer.sqlite_scripts import (
 from wg_gaming_installer.web_static import HTML_DASHBOARD
 
 _PATHS = Paths()
+security = HTTPBasic()
+
+_AUTH_USERNAME: str = os.getenv("WG_WEB_USERNAME", "admin")
+_AUTH_PASSWORD: str | None = os.getenv("WG_WEB_PASSWORD", None)
+_AUTH_ENABLED: bool = True
+
+
+def set_auth_credentials(username: str, password: str | None, enabled: bool = True) -> None:
+    """
+    Set authentication username, password, and enabled status.
+    """
+    global _AUTH_USERNAME, _AUTH_PASSWORD, _AUTH_ENABLED
+    _AUTH_USERNAME = username
+    _AUTH_PASSWORD = password
+    _AUTH_ENABLED = enabled
+
+
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)) -> str:
+    """
+    Verify HTTP Basic Authentication credentials.
+    """
+    if not _AUTH_ENABLED:
+        return "authenticated"
+
+    if not _AUTH_PASSWORD:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Server authentication password not configured.",
+            headers={"WWW-Authenticate": 'Basic realm="WireGuard Control Panel"'},
+        )
+
+    is_user_ok = secrets.compare_digest(credentials.username.encode("utf-8"), _AUTH_USERNAME.encode("utf-8"))
+    is_pass_ok = secrets.compare_digest(credentials.password.encode("utf-8"), _AUTH_PASSWORD.encode("utf-8"))
+
+    if not (is_user_ok and is_pass_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password.",
+            headers={"WWW-Authenticate": 'Basic realm="WireGuard Control Panel"'},
+        )
+    return credentials.username
+
 
 app = FastAPI(
     title="WireGuard Gaming Control Panel",
     description="Web dashboard & REST API to manage WireGuard VPN server and gaming port forwarding rules.",
     version="0.1.0",
+    dependencies=[Depends(verify_credentials)],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next: Any) -> Response:
+    """
+    Add security response headers to prevent clickjacking, MIME-sniffing, and XSS attacks.
+    """
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 def _gen_keys() -> tuple[str, str, str]:
@@ -262,11 +320,9 @@ def create_peer(req: PeerCreateRequest) -> dict[str, Any]:
         if not wg_config or not server_config:
             raise HTTPException(status_code=400, detail="Server network settings missing in database.")
 
-        # Check name uniqueness
         if any(p.name == req.name for p in existing_peers):
             raise HTTPException(status_code=400, detail=f"Peer with name '{req.name}' already exists.")
 
-        # Determine IP addresses
         if req.ipv4:
             clean_ip = req.ipv4.strip()
             if "/" not in clean_ip:
@@ -276,14 +332,10 @@ def create_peer(req: PeerCreateRequest) -> dict[str, Any]:
         else:
             peer_v4, peer_v6 = _allocate_peer_ips(wg_config, existing_peers)
 
-        # Parse DNS
         parsed_dns: list[IPv4Address | IPv6Address] = [ip_address(d.strip()) for d in req.dns if d.strip()]
-
-        # Parse forward ports
         ports_str = ",".join(p.strip() for p in req.forward_ports if p.strip())
         parsed_ports = parse_forward_ports(ports_str)
 
-        # Keys
         priv, pub, psk = _gen_keys()
 
         peer = PeerConfig(
@@ -299,7 +351,6 @@ def create_peer(req: PeerCreateRequest) -> dict[str, Any]:
 
         add_peer_config(conn, peer)
 
-        # Restart service if currently running to apply new nftables & peer settings
         try:
             if get_wg_service_status(wg_config.wg_name) == ServiceStatus.ACTIVE:
                 from wg_gaming_installer.install_scripts import _restart_wg_if_active
@@ -326,7 +377,6 @@ def update_peer(peer_name: str, req: PeerCreateRequest) -> dict[str, Any]:
         if not target:
             raise HTTPException(status_code=404, detail=f"Peer '{peer_name}' not found.")
 
-        # Delete existing peer record
         delete_peer_config(conn, peer_name)
 
         wg_config = read_wg_config(conn)
@@ -335,7 +385,6 @@ def update_peer(peer_name: str, req: PeerCreateRequest) -> dict[str, Any]:
         if not wg_config or not server_config:
             raise HTTPException(status_code=400, detail="Server network settings missing.")
 
-        # Determine IP addresses
         if req.ipv4:
             clean_ip = req.ipv4.strip()
             if "/" not in clean_ip:
@@ -456,6 +505,8 @@ def get_peer_qr(peer_name: str) -> dict[str, str]:
         b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
         return {"peer_name": peer_name, "qr_url": f"data:image/svg+xml;base64,{b64}"}
     except Exception:
+        import qrcode
+
         img = qrcode.make(conf_text)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -470,7 +521,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="WireGuard Gaming Web Control Panel")
     parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+    parser.add_argument("--username", default=os.getenv("WG_WEB_USERNAME", "admin"), help="Web UI admin username")
+    parser.add_argument("--password", default=os.getenv("WG_WEB_PASSWORD", None), help="Web UI admin password")
+    parser.add_argument("--disable-auth", action="store_true", help="Disable HTTP Basic Authentication")
     args = parser.parse_args()
+
+    auth_enabled = not args.disable_auth
+    auth_password = args.password
+
+    if auth_enabled and not auth_password:
+        auth_password = secrets.token_urlsafe(12)
+        print("\n" + "=" * 60)
+        print("🔐 WireGuard Gaming Web Control Panel Credentials")
+        print("=" * 60)
+        print(f"  Username : {args.username}")
+        print(f"  Password : {auth_password}")
+        print("=" * 60)
+        print("  Set custom credentials via --password or WG_WEB_PASSWORD env var.\n")
+
+    set_auth_credentials(username=args.username, password=auth_password, enabled=auth_enabled)
 
     print(f"🚀 Starting WireGuard Gaming Web Panel on http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
