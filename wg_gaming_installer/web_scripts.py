@@ -171,6 +171,26 @@ class PeerCreateRequest(BaseModel):
     forward_ports: list[str] = Field(default_factory=list)
 
 
+GAMING_PRESETS: list[dict[str, str]] = [
+    {"name": "Minecraft", "icon": "⛏️", "ports": "25565"},
+    {"name": "Steam / Valve P2P", "icon": "🎮", "ports": "27015-27030"},
+    {"name": "Call of Duty / Warzone", "icon": "🎯", "ports": "3074"},
+    {"name": "Palworld", "icon": "🦖", "ports": "8211"},
+    {"name": "Rust", "icon": "🛠️", "ports": "28015"},
+    {"name": "FiveM / GTA V", "icon": "🚗", "ports": "30120"},
+    {"name": "ARK / DayZ", "icon": "🧟", "ports": "7777, 27015"},
+    {"name": "Discord / VOIP", "icon": "🔊", "ports": "50000-50020"},
+]
+
+
+@app.get("/api/presets")
+def get_gaming_presets() -> list[dict[str, str]]:
+    """
+    Get 1-click gaming port forwarding presets catalog.
+    """
+    return GAMING_PRESETS
+
+
 @app.get("/", response_class=HTMLResponse)
 def get_dashboard() -> str:
     """

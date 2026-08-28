@@ -169,3 +169,12 @@ def test_peer_crud_lifecycle(mock_db: Path) -> None:
 
     list_res3 = client.get("/api/peers", auth=auth)
     assert list_res3.json() == []
+
+
+def test_get_gaming_presets() -> None:
+    client = TestClient(web_scripts.app)
+    response = client.get("/api/presets", auth=("admin", "secret123"))
+    assert response.status_code == 200
+    presets = response.json()
+    assert len(presets) >= 5
+    assert any(p["name"] == "Minecraft" and p["ports"] == "25565" for p in presets)

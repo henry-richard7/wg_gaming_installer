@@ -602,6 +602,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div class="form-group">
                     <label class="form-label" for="peerPorts">Forwarded Gaming Ports (Public -> Peer)</label>
                     <input type="text" id="peerPorts" class="form-input" placeholder="e.g., 25565, 27015-27030 (Minecraft, Steam)">
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                        ⚡ 1-Click Gaming Presets:
+                        <div id="presetsContainer" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;"></div>
+                    </div>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('addPeerModal')">Cancel</button>
@@ -890,9 +894,38 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 .replace(/'/g, "&#039;");
         }
 
+        async function loadPresets() {
+            try {
+                const res = await fetch('/api/presets');
+                const presets = await res.json();
+                const container = document.getElementById('presetsContainer');
+                if (!container) return;
+                container.innerHTML = presets.map(p => `
+                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 3px 8px; font-size: 0.75rem;" onclick="appendPreset('${escapeHtml(p.ports)}')">
+                        ${p.icon} ${escapeHtml(p.name)} (${escapeHtml(p.ports)})
+                    </button>
+                `).join('');
+            } catch (err) {
+                console.error("Failed to load presets:", err);
+            }
+        }
+
+        function appendPreset(portsStr) {
+            const input = document.getElementById('peerPorts');
+            const val = input.value.trim();
+            if (!val) {
+                input.value = portsStr;
+            } else {
+                if (!val.includes(portsStr)) {
+                    input.value = `${val}, ${portsStr}`;
+                }
+            }
+        }
+
         // Initial Load
         fetchStatus();
         fetchPeers();
+        loadPresets();
         setInterval(fetchStatus, 10000);
     </script>
 </body>
