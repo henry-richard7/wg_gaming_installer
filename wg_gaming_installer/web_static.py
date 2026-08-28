@@ -649,6 +649,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             const badge = document.getElementById('serviceStatusBadge');
             const text = document.getElementById('serviceStatusText');
 
+            if (!data.server_configured) {
+                badge.className = 'status-badge status-inactive';
+                text.textContent = 'Setup Required';
+                document.getElementById('statEndpoint').textContent = 'Not Configured';
+                document.getElementById('statInterface').textContent = 'Run wg-gaming-installer first';
+                return;
+            }
+
             if (data.status === 'active') {
                 badge.className = 'status-badge status-active';
                 text.textContent = 'Service Active';

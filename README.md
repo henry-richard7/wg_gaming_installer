@@ -36,19 +36,23 @@ chmod +x setup.sh
 ### Step 3: Run the Manager
 
 > [!NOTE]
-> WireGuard server configuration and firewall NAT operations require `sudo`.
+> `sudo` is required when running the installer or web panel because WireGuard creates network interfaces (`wg0`), enables kernel IP forwarding, and applies `nftables` port forwarding rules.
+>
+> If `sudo uv` returns `command not found` (because `sudo` resets `$PATH`), use `sudo $(which uv)` or `sudo env "PATH=$PATH"`:
 
 #### Option A: Web Control Panel (Recommended)
 Launch the web interface:
 ```bash
-sudo uv run wg-gaming-web --host 0.0.0.0 --port 8000
+sudo $(which uv) run wg-gaming-web --host 0.0.0.0 --port 8000
+# Or: sudo env "PATH=$PATH" uv run wg-gaming-web --host 0.0.0.0 --port 8000
 ```
 Open **`http://<SERVER_PUBLIC_IP>:8000`** in your browser to manage peers, view real-time server metrics, scan QR codes, and configure port forwarding.
 
 #### Option B: Terminal CLI Menu
 Launch the interactive CLI menu:
 ```bash
-sudo uv run wg-gaming-installer
+sudo $(which uv) run wg-gaming-installer
+# Or: sudo env "PATH=$PATH" uv run wg-gaming-installer
 ```
 Follow the step-by-step terminal prompts to configure network interfaces, add peers, or set up port forwarding.
 

@@ -13,17 +13,23 @@ if ! command -v uv &> /dev/null; then
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
+# Ensure root/sudo can locate uv by symlinking to /usr/local/bin if needed
+if [ -f "$HOME/.cargo/bin/uv" ] && [ ! -f "/usr/local/bin/uv" ]; then
+    echo "🔗 Symlinking uv to /usr/local/bin for sudo access..."
+    sudo ln -sf "$HOME/.cargo/bin/uv" /usr/local/bin/uv 2>/dev/null || true
+fi
+
 echo "⚡ Syncing Python environment and dependencies with uv..."
 uv sync
 
 echo ""
 echo "✅ Setup completed successfully!"
 echo ""
-echo "📌 Usage (Note: WireGuard network & firewall actions require root/sudo):"
+echo "📌 Recommended Workflow:"
 echo ""
-echo "To run the interactive CLI installer:"
-echo "  sudo uv run wg-gaming-installer"
+echo "Step 1: Initialize server configuration (First time only):"
+echo "  sudo $(which uv) run wg-gaming-installer"
 echo ""
-echo "To launch the Web UI control panel:"
-echo "  sudo uv run wg-gaming-web --host 0.0.0.0 --port 8000"
+echo "Step 2: Launch the Web UI control panel:"
+echo "  sudo $(which uv) run wg-gaming-web --host 0.0.0.0 --port 8000"
 echo ""
