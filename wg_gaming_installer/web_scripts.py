@@ -9,6 +9,7 @@ import base64
 import io
 import os
 import secrets
+import zipfile
 from ipaddress import (
     IPv4Address,
     IPv4Interface,
@@ -551,6 +552,48 @@ def get_peer_qr(peer_name: str) -> dict[str, str]:
         img.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
         return {"peer_name": peer_name, "qr_url": f"data:image/png;base64,{b64}"}
+
+
+@app.get("/api/peers/export/zip")
+def export_peers_zip() -> Response:
+    """
+    Export all peer WireGuard .conf files and QR code SVG images as a single ZIP archive.
+    """
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        raise HTTPException(status_code=400, detail="Server not configured.")
+
+    with conf_db_connected(db_path=db_path) as conn:
+        peers = read_all_peer_configs(conn)
+        wg_config = read_wg_config(conn)
+        server_config = read_server_nic_config(conn)
+
+    if not wg_config or not server_config:
+        raise HTTPException(status_code=400, detail="Server configuration missing.")
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for peer in peers:
+            conf_str = create_wg_peer_str(peer=peer, server_config=server_config, wg_config=wg_config)
+            zf.writestr(f"{peer.name}.conf", conf_str)
+
+            try:
+                import qrcode.image.svg
+
+                factory = qrcode.image.svg.SvgImage
+                img = qrcode.make(conf_str, image_factory=factory)
+                qr_buf = io.BytesIO()
+                img.save(qr_buf)
+                zf.writestr(f"{peer.name}_qr.svg", qr_buf.getvalue())
+            except Exception:
+                pass
+
+    zip_buf.seek(0)
+    return Response(
+        content=zip_buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="wireguard_peers_all.zip"'},
+    )
 
 
 def main() -> None:

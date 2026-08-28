@@ -178,3 +178,27 @@ def test_get_gaming_presets() -> None:
     presets = response.json()
     assert len(presets) >= 5
     assert any(p["name"] == "Minecraft" and p["ports"] == "25565" for p in presets)
+
+
+def test_export_peers_zip(mock_db: Path) -> None:
+    import io
+    import zipfile
+
+    client = TestClient(web_scripts.app)
+    auth = ("admin", "secret123")
+
+    # Add a peer first
+    client.post("/api/peers", json={"name": "peer1", "dns": ["1.1.1.1"]}, auth=auth)
+
+    response = client.get("/api/peers/export/zip", auth=auth)
+    assert response.status_code == 200
+    assert response.headers.get("content-type") == "application/zip"
+
+    # Verify ZIP content
+    zip_bytes = io.BytesIO(response.content)
+    with zipfile.ZipFile(zip_bytes, "r") as zf:
+        namelist = zf.namelist()
+        assert "peer1.conf" in namelist
+        assert "peer1_qr.svg" in namelist
+        conf_content = zf.read("peer1.conf").decode("utf-8")
+        assert "[Interface]" in conf_content
