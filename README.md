@@ -16,32 +16,47 @@ Lightweight installer/manager for a personal WireGuard server with optional port
 - [Legacy installer](#legacy-installer)
 - [License](#license)
 
-## Quick Start
+## Step-by-Step Installation & Usage Guide
 
-### 1-Command Setup (Recommended)
-
-Run as `root` (`sudo -i`):
-
+### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/xiahualiu/wg_gaming_installer.git
+git clone https://github.com/henry-richard7/wg_gaming_installer
 cd wg_gaming_installer
+```
+
+### Step 2: Run the Quick Setup
+```bash
 chmod +x setup.sh
 ./setup.sh
 ```
+*Note: `setup.sh` automatically installs `uv` (if missing) and resolves all Python dependencies.*
 
-`setup.sh` automatically installs `uv` (if missing), resolves and syncs all dependencies in seconds, and prepares both the CLI installer and Web UI.
+---
 
-### Running with `uv`
+### Step 3: Run the Manager
 
-- **Launch Interactive CLI Menu**:
-  ```bash
-  uv run wg-gaming-installer
-  ```
+> [!NOTE]
+> WireGuard server configuration and firewall NAT operations require `sudo`.
 
-- **Launch Web Control Panel**:
-  ```bash
-  uv run wg-gaming-web --host 0.0.0.0 --port 8000
-  ```
+#### Option A: Web Control Panel (Recommended)
+Launch the web interface:
+```bash
+sudo uv run wg-gaming-web --host 0.0.0.0 --port 8000
+```
+Open **`http://<SERVER_PUBLIC_IP>:8000`** in your browser to manage peers, view real-time server metrics, scan QR codes, and configure port forwarding.
+
+#### Option B: Terminal CLI Menu
+Launch the interactive CLI menu:
+```bash
+sudo uv run wg-gaming-installer
+```
+Follow the step-by-step terminal prompts to configure network interfaces, add peers, or set up port forwarding.
+
+---
+
+### Step 4: Connect Clients
+- **Mobile Devices (iOS / Android)**: Scan the generated QR code in the official WireGuard App.
+- **Desktop (Windows / macOS / Linux)**: Download the client `.conf` file and import it into your WireGuard client app.
 
 ## Web UI Dashboard
 
