@@ -581,6 +581,38 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <p>Please wait while fetching server configuration.</p>
             </div>
         </div>
+
+        <!-- Gaming Hub: Chat & File Sharing -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px;">
+            <!-- Chatroom Panel -->
+            <div class="card" style="display: flex; flex-direction: column; height: 420px;">
+                <div class="section-title" style="margin-bottom: 12px; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+                    💬 LAN Gaming Chatroom
+                </div>
+                <div id="chatMessages" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border-radius: 8px; padding: 12px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; border: 1px solid var(--border);">
+                    <div style="color: var(--text-muted); text-align: center; margin-top: 40px;">No messages yet. Send a message to get started!</div>
+                </div>
+                <form id="chatForm" onsubmit="handleSendChat(event)" style="display: flex; gap: 8px;">
+                    <input type="text" id="chatSender" class="form-input" style="width: 110px;" value="Admin" placeholder="Your Name" required>
+                    <input type="text" id="chatInput" class="form-input" style="flex: 1;" placeholder="Type a message or game server IP..." required>
+                    <button type="submit" class="btn btn-primary" style="padding: 0 16px;">Send</button>
+                </form>
+            </div>
+
+            <!-- File Sharing Panel -->
+            <div class="card" style="display: flex; flex-direction: column; height: 420px;">
+                <div class="section-title" style="margin-bottom: 12px; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center;">
+                    <span>📁 VPN File Share Hub</span>
+                    <label class="btn btn-secondary btn-sm" style="cursor: pointer; padding: 4px 10px; font-size: 0.8rem;">
+                        + Upload File
+                        <input type="file" id="fileUploadInput" onchange="handleFileUpload(event)" style="display: none;">
+                    </label>
+                </div>
+                <div id="filesList" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border-radius: 8px; padding: 12px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border);">
+                    <div style="color: var(--text-muted); text-align: center; margin-top: 40px;">No shared files yet. Click "+ Upload File" to share mods, maps, or configs.</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Add Peer Modal -->
@@ -927,11 +959,118 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
+        async function fetchChatMessages() {
+            try {
+                const res = await fetch('/api/chat/messages');
+                const msgs = await res.json();
+                const container = document.getElementById('chatMessages');
+                if (!container) return;
+                if (!msgs || msgs.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-muted); text-align: center; margin-top: 40px;">No messages yet. Send a message to get started!</div>';
+                    return;
+                }
+                const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+                container.innerHTML = msgs.map(m => `
+                    <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--primary);">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">
+                            <strong style="color: #6ee7b7;">${escapeHtml(m.sender)}</strong>
+                            <span>${escapeHtml(m.timestamp)}</span>
+                        </div>
+                        <div style="color: var(--text-main); word-break: break-word;">${escapeHtml(m.message)}</div>
+                    </div>
+                `).join('');
+                if (isScrolledToBottom) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            } catch (err) {
+                console.error("Failed to fetch chat:", err);
+            }
+        }
+
+        async function handleSendChat(e) {
+            e.preventDefault();
+            const sender = document.getElementById('chatSender').value.trim();
+            const message = document.getElementById('chatInput').value.trim();
+            if (!sender || !message) return;
+
+            try {
+                await fetch('/api/chat/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sender, message })
+                });
+                document.getElementById('chatInput').value = '';
+                fetchChatMessages();
+            } catch (err) {
+                alert("Failed to send message: " + err);
+            }
+        }
+
+        async function fetchSharedFiles() {
+            try {
+                const res = await fetch('/api/files');
+                const files = await res.json();
+                const container = document.getElementById('filesList');
+                if (!container) return;
+                if (!files || files.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-muted); text-align: center; margin-top: 40px;">No shared files yet. Click "+ Upload File" to share mods, maps, or configs.</div>';
+                    return;
+                }
+                container.innerHTML = files.map(f => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                        <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 8px;">
+                            <div style="font-weight: 500; color: var(--text-main);">${escapeHtml(f.filename)}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(f.size_formatted)} • Uploaded by ${escapeHtml(f.uploader)}</div>
+                        </div>
+                        <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                            <a href="/api/files/download/${f.id}" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" download>⬇️ Download</a>
+                            <button class="btn btn-danger btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="deleteSharedFile(${f.id})">&times;</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error("Failed to fetch files:", err);
+            }
+        }
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploader = document.getElementById('chatSender').value || 'Admin';
+
+            try {
+                await fetch(`/api/files/upload?uploader=${encodeURIComponent(uploader)}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                e.target.value = '';
+                fetchSharedFiles();
+            } catch (err) {
+                alert("Failed to upload file: " + err);
+            }
+        }
+
+        async function deleteSharedFile(id) {
+            if (!confirm("Are you sure you want to delete this shared file?")) return;
+            try {
+                await fetch(`/api/files/${id}`, { method: 'DELETE' });
+                fetchSharedFiles();
+            } catch (err) {
+                alert("Failed to delete file: " + err);
+            }
+        }
+
         // Initial Load
         fetchStatus();
         fetchPeers();
         loadPresets();
+        fetchChatMessages();
+        fetchSharedFiles();
         setInterval(fetchStatus, 10000);
+        setInterval(fetchChatMessages, 3000);
+        setInterval(fetchSharedFiles, 10000);
     </script>
 </body>
 </html>

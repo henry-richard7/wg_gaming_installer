@@ -102,7 +102,14 @@ class Paths:
         """
         Path to the nftables configuration file.
         """
-        return self.wg_conf_folder / 'wg.nft'
+    @property
+    def shared_files_folder(self) -> Path:
+        """
+        Path to the shared files directory (inside wg_conf_folder).
+        """
+        folder = self.wg_conf_folder / "shared_files"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
 
     def server_wg_conf_path(self, wg_nic_name: str) -> Path:
         """

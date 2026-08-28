@@ -21,8 +21,17 @@ from typing import Any
 
 import psutil
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 
@@ -36,13 +45,18 @@ from wg_gaming_installer.sqlite_scripts import (
     PeerConfig,
     ServerIFConfig,
     ServerWGConfig,
+    add_chat_message,
     add_peer_config,
+    add_shared_file,
     conf_db_connected,
     delete_peer_config,
+    delete_shared_file,
     parse_forward_ports,
     read_all_peer_configs,
     read_os_info,
+    read_recent_chat_messages,
     read_server_nic_config,
+    read_shared_files,
     read_wg_config,
 )
 from wg_gaming_installer.web_static import HTML_DASHBOARD
@@ -95,7 +109,6 @@ app = FastAPI(
     title="WireGuard Gaming Control Panel",
     description="Web dashboard & REST API to manage WireGuard VPN server and gaming port forwarding rules.",
     version="0.1.0",
-    dependencies=[Depends(verify_credentials)],
 )
 
 
@@ -170,6 +183,11 @@ class PeerCreateRequest(BaseModel):
     ipv6: str | None = None
     dns: list[str] = Field(default_factory=lambda: ["1.1.1.1", "1.0.0.1"])
     forward_ports: list[str] = Field(default_factory=list)
+
+
+class ChatMessageRequest(BaseModel):
+    sender: str = Field(..., min_length=1, max_length=64)
+    message: str = Field(..., min_length=1, max_length=1000)
 
 
 GAMING_PRESETS: list[dict[str, str]] = [
@@ -271,7 +289,7 @@ def get_status() -> dict[str, Any]:
         return {"server_configured": False, "status": "error", "message": str(e)}
 
 
-@app.post("/api/service/start")
+@app.post("/api/service/start", dependencies=[Depends(verify_credentials)])
 def start_service() -> dict[str, str]:
     """
     Start the WireGuard service and apply nftables rules.
@@ -285,7 +303,7 @@ def start_service() -> dict[str, str]:
         raise HTTPException(status_code=500, detail=f"Failed to start service: {e}") from e
 
 
-@app.post("/api/service/stop")
+@app.post("/api/service/stop", dependencies=[Depends(verify_credentials)])
 def stop_service() -> dict[str, str]:
     """
     Stop the WireGuard service and remove nftables rules.
@@ -343,7 +361,7 @@ def list_peers() -> list[dict[str, Any]]:
     return result
 
 
-@app.post("/api/peers")
+@app.post("/api/peers", dependencies=[Depends(verify_credentials)])
 def create_peer(req: PeerCreateRequest) -> dict[str, Any]:
     """
     Add a new peer with specified or auto-allocated IP address and gaming port forwards.
@@ -402,7 +420,7 @@ def create_peer(req: PeerCreateRequest) -> dict[str, Any]:
     return {"status": "success", "name": peer.name, "ipv4": str(peer.ipv4)}
 
 
-@app.put("/api/peers/{peer_name}")
+@app.put("/api/peers/{peer_name}", dependencies=[Depends(verify_credentials)])
 def update_peer(peer_name: str, req: PeerCreateRequest) -> dict[str, Any]:
     """
     Update an existing peer's configuration.
@@ -463,7 +481,7 @@ def update_peer(peer_name: str, req: PeerCreateRequest) -> dict[str, Any]:
     return {"status": "success", "name": updated_peer.name}
 
 
-@app.delete("/api/peers/{peer_name}")
+@app.delete("/api/peers/{peer_name}", dependencies=[Depends(verify_credentials)])
 def delete_peer(peer_name: str) -> dict[str, str]:
     """
     Delete a peer configuration.
@@ -494,7 +512,7 @@ def delete_peer(peer_name: str) -> dict[str, str]:
     return {"status": "success", "message": f"Peer '{peer_name}' deleted."}
 
 
-@app.get("/api/peers/{peer_name}/config")
+@app.get("/api/peers/{peer_name}/config", dependencies=[Depends(verify_credentials)])
 def get_peer_config(peer_name: str) -> Response:
     """
     Get raw WireGuard configuration text string for a peer.
@@ -517,7 +535,7 @@ def get_peer_config(peer_name: str) -> Response:
     return Response(content=conf_str, media_type="text/plain")
 
 
-@app.get("/api/peers/{peer_name}/download")
+@app.get("/api/peers/{peer_name}/download", dependencies=[Depends(verify_credentials)])
 def download_peer_config(peer_name: str) -> Response:
     """
     Download client WireGuard configuration as a `.conf` file attachment.
@@ -527,7 +545,7 @@ def download_peer_config(peer_name: str) -> Response:
     return conf_response
 
 
-@app.get("/api/peers/{peer_name}/qr")
+@app.get("/api/peers/{peer_name}/qr", dependencies=[Depends(verify_credentials)])
 def get_peer_qr(peer_name: str) -> dict[str, str]:
     """
     Generate a base64 data URL of the WireGuard QR code for a peer.
@@ -554,7 +572,7 @@ def get_peer_qr(peer_name: str) -> dict[str, str]:
         return {"peer_name": peer_name, "qr_url": f"data:image/png;base64,{b64}"}
 
 
-@app.get("/api/peers/export/zip")
+@app.get("/api/peers/export/zip", dependencies=[Depends(verify_credentials)])
 def export_peers_zip() -> Response:
     """
     Export all peer WireGuard .conf files and QR code SVG images as a single ZIP archive.
@@ -594,6 +612,144 @@ def export_peers_zip() -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="wireguard_peers_all.zip"'},
     )
+
+
+@app.get("/api/chat/messages")
+def get_chat_messages() -> list[dict[str, Any]]:
+    """
+    Get recent chat messages from the LAN Gaming Chatroom.
+    """
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        return []
+
+    with conf_db_connected(db_path=db_path) as conn:
+        return read_recent_chat_messages(conn, limit=50)
+
+
+@app.post("/api/chat/messages")
+def post_chat_message(payload: ChatMessageRequest) -> dict[str, Any]:
+    """
+    Post a new chat message to the LAN Gaming Chatroom.
+    """
+    if not payload.sender.strip() or not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Sender and message cannot be empty.")
+
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        raise HTTPException(status_code=400, detail="Server not configured.")
+
+    with conf_db_connected(db_path=db_path) as conn:
+        return add_chat_message(conn, sender=payload.sender, message=payload.message)
+
+
+@app.get("/api/files")
+def list_files() -> list[dict[str, Any]]:
+    """
+    List all shared files in the VPN File Share Hub.
+    """
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        return []
+
+    from wg_gaming_installer.shell_scripts import format_bytes
+
+    with conf_db_connected(db_path=db_path) as conn:
+        files = read_shared_files(conn)
+        return [
+            {
+                "id": f["id"],
+                "filename": f["filename"],
+                "size_bytes": f["size_bytes"],
+                "size_formatted": format_bytes(f["size_bytes"]),
+                "uploader": f["uploader"],
+                "timestamp": f["timestamp"],
+            }
+            for f in files
+        ]
+
+
+@app.post("/api/files/upload")
+async def upload_file(file: UploadFile = File(...), uploader: str = "Admin") -> dict[str, Any]:
+    """
+    Upload a file to share with connected WireGuard gaming peers.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        raise HTTPException(status_code=400, detail="Server not configured.")
+
+    content = await file.read()
+    size_bytes = len(content)
+
+    safe_saved_name = f"{secrets.token_hex(8)}_{os.path.basename(file.filename)}"
+    save_path = _PATHS.shared_files_folder / safe_saved_name
+    save_path.write_bytes(content)
+
+    with conf_db_connected(db_path=db_path) as conn:
+        record = add_shared_file(
+            conn,
+            filename=file.filename,
+            saved_name=safe_saved_name,
+            size_bytes=size_bytes,
+            uploader=uploader,
+        )
+
+    from wg_gaming_installer.shell_scripts import format_bytes
+
+    record["size_formatted"] = format_bytes(size_bytes)
+    return record
+
+
+@app.get("/api/files/download/{file_id}")
+def download_file(file_id: int) -> FileResponse:
+    """
+    Download a shared file by ID.
+    """
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        raise HTTPException(status_code=400, detail="Server not configured.")
+
+    with conf_db_connected(db_path=db_path) as conn:
+        files = read_shared_files(conn)
+        target = next((f for f in files if f["id"] == file_id), None)
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Shared file not found.")
+
+    file_path = _PATHS.shared_files_folder / target["saved_name"]
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File on disk missing.")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=target["filename"],
+        media_type="application/octet-stream",
+    )
+
+
+@app.delete("/api/files/{file_id}")
+def delete_file(file_id: int) -> dict[str, str]:
+    """
+    Delete a shared file by ID.
+    """
+    db_path = _PATHS.server_conf_db_path
+    if not db_path.exists():
+        raise HTTPException(status_code=400, detail="Server not configured.")
+
+    with conf_db_connected(db_path=db_path) as conn:
+        record = delete_shared_file(conn, file_id)
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Shared file not found.")
+
+    file_path = _PATHS.shared_files_folder / record["saved_name"]
+    if file_path.exists():
+        file_path.unlink()
+
+    return {"status": "success", "message": "File deleted successfully."}
 
 
 def main() -> None:
