@@ -155,4 +155,3 @@ def test_paths_properties() -> None:
     assert p.nftables_conf_path.name == "wg.nft"
     assert p.start_script_path.name == "wg_start.sh"
     assert p.stop_script_path.name == "wg_stop.sh"
-    assert p.shared_files_folder is not None

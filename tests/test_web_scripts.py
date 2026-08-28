@@ -70,12 +70,6 @@ def mock_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         wg_conf_folder = wg_folder
         server_conf_db_path = db_path
 
-        @property
-        def shared_files_folder(self) -> Path:
-            folder = self.wg_conf_folder / "shared_files"
-            folder.mkdir(parents=True, exist_ok=True)
-            return folder
-
     monkeypatch.setattr(web_scripts, "_PATHS", MockPaths())
     return db_path
 
@@ -87,12 +81,6 @@ def test_auth_required() -> None:
     public_res = client.get("/")
     assert public_res.status_code == 200
     assert "WireGuard Gaming Panel" in public_res.text
-
-    chat_res = client.get("/api/chat/messages")
-    assert chat_res.status_code == 200
-
-    files_res = client.get("/api/files")
-    assert files_res.status_code == 200
 
     # 2. Admin routes return 401 when unauthenticated
     unauth_peer = client.post("/api/peers", json={"name": "test"})
@@ -213,72 +201,3 @@ def test_export_peers_zip(mock_db: Path) -> None:
         assert "peer1_qr.svg" in namelist
         conf_content = zf.read("peer1.conf").decode("utf-8")
         assert "[Interface]" in conf_content
-
-
-def test_chat_lifecycle(mock_db: Path) -> None:
-    client = TestClient(web_scripts.app)
-    auth = ("admin", "secret123")
-
-    # Initially empty chat
-    res = client.get("/api/chat/messages", auth=auth)
-    assert res.status_code == 200
-    assert res.json() == []
-
-    # Send a message
-    post_res = client.post(
-        "/api/chat/messages",
-        json={"sender": "Gamer1", "message": "Join Minecraft server at 10.66.66.1:25565!"},
-        auth=auth,
-    )
-    assert post_res.status_code == 200
-    msg = post_res.json()
-    assert msg["sender"] == "Gamer1"
-    assert msg["message"] == "Join Minecraft server at 10.66.66.1:25565!"
-
-    # Fetch chat list again
-    list_res = client.get("/api/chat/messages", auth=auth)
-    assert list_res.status_code == 200
-    msgs = list_res.json()
-    assert len(msgs) == 1
-    assert msgs[0]["sender"] == "Gamer1"
-
-
-def test_file_sharing_lifecycle(mock_db: Path) -> None:
-    import io
-
-    client = TestClient(web_scripts.app)
-    auth = ("admin", "secret123")
-
-    # Initially no files
-    res = client.get("/api/files", auth=auth)
-    assert res.status_code == 200
-    assert res.json() == []
-
-    # Upload file
-    file_bytes = b"mod_config_data_12345"
-    files = {"file": ("custom_mod.zip", io.BytesIO(file_bytes), "application/zip")}
-    upload_res = client.post("/api/files/upload?uploader=Gamer1", files=files, auth=auth)
-    assert upload_res.status_code == 200
-    file_info = upload_res.json()
-    assert file_info["filename"] == "custom_mod.zip"
-    file_id = file_info["id"]
-
-    # Verify files list
-    list_res = client.get("/api/files", auth=auth)
-    assert list_res.status_code == 200
-    file_list = list_res.json()
-    assert len(file_list) == 1
-    assert file_list[0]["filename"] == "custom_mod.zip"
-
-    # Download file
-    dl_res = client.get(f"/api/files/download/{file_id}", auth=auth)
-    assert dl_res.status_code == 200
-    assert dl_res.content == file_bytes
-
-    # Delete file
-    del_res = client.delete(f"/api/files/{file_id}", auth=auth)
-    assert del_res.status_code == 200
-
-    # Verify empty after delete
-    list_res2 = client.get("/api/files", auth=auth)
-    assert list_res2.json() == []

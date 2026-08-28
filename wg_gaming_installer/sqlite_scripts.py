@@ -12,7 +12,6 @@ from enum import IntEnum, auto
 from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface, ip_address
 from pathlib import Path
 from textwrap import dedent
-from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,41 +247,11 @@ def create_config_db(db_conn: sqlite3.Connection) -> None:
             """))
 
 
-def ensure_chat_and_file_tables(db_conn: sqlite3.Connection) -> None:
-    """
-    Ensure chat_messages and shared_files tables exist in the database.
-    """
-    cur: sqlite3.Cursor = db_conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender TEXT NOT NULL,
-            message TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS shared_files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT NOT NULL,
-            saved_name TEXT NOT NULL,
-            size_bytes INTEGER NOT NULL,
-            uploader TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-
-
 def ensure_wg_mtu_column(db_conn: sqlite3.Connection) -> None:
     """
     Add the `mtu` column to `server_wg_config` for databases created before the
     column existed. No-op when the column is already present.
     """
-    ensure_chat_and_file_tables(db_conn)
     cur: sqlite3.Cursor = db_conn.cursor()
     cur.execute("PRAGMA table_info(server_wg_config);")
     columns: list[str] = [row[1] for row in cur.fetchall()]
@@ -615,101 +584,3 @@ def purge_server_config(db_conn: sqlite3.Connection) -> None:
     cur.execute("DELETE FROM server_nic_config;")
     cur.execute("DELETE FROM server_wg_config;")
     cur.execute("DELETE FROM peer_config;")
-
-
-def add_chat_message(db_conn: sqlite3.Connection, sender: str, message: str) -> dict[str, Any]:
-    """
-    Insert a chat message into the database.
-    """
-    ensure_chat_and_file_tables(db_conn)
-    cur: sqlite3.Cursor = db_conn.cursor()
-    cur.execute(
-        "INSERT INTO chat_messages (sender, message) VALUES (?, ?);",
-        (sender.strip(), message.strip()),
-    )
-    msg_id = cur.lastrowid
-    cur.execute("SELECT id, sender, message, timestamp FROM chat_messages WHERE id = ?;", (msg_id,))
-    row = cur.fetchone()
-    return {"id": row[0], "sender": row[1], "message": row[2], "timestamp": str(row[3])}
-
-
-def read_recent_chat_messages(db_conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]:
-    """
-    Get recent chat messages from the database.
-    """
-    ensure_chat_and_file_tables(db_conn)
-    cur: sqlite3.Cursor = db_conn.cursor()
-    cur.execute(
-        "SELECT id, sender, message, timestamp FROM chat_messages ORDER BY id DESC LIMIT ?;",
-        (limit,),
-    )
-    rows = cur.fetchall()
-    return [
-        {"id": row[0], "sender": row[1], "message": row[2], "timestamp": str(row[3])}
-        for row in reversed(rows)
-    ]
-
-
-def add_shared_file(
-    db_conn: sqlite3.Connection, filename: str, saved_name: str, size_bytes: int, uploader: str
-) -> dict[str, Any]:
-    """
-    Record a shared file metadata entry in the database.
-    """
-    ensure_chat_and_file_tables(db_conn)
-    cur: sqlite3.Cursor = db_conn.cursor()
-    cur.execute(
-        "INSERT INTO shared_files (filename, saved_name, size_bytes, uploader) VALUES (?, ?, ?, ?);",
-        (filename, saved_name, size_bytes, uploader),
-    )
-    file_id = cur.lastrowid
-    cur.execute(
-        "SELECT id, filename, saved_name, size_bytes, uploader, timestamp FROM shared_files WHERE id = ?;",
-        (file_id,),
-    )
-    row = cur.fetchone()
-    return {
-        "id": row[0],
-        "filename": row[1],
-        "saved_name": row[2],
-        "size_bytes": row[3],
-        "uploader": row[4],
-        "timestamp": str(row[5]),
-    }
-
-
-def read_shared_files(db_conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """
-    Get all shared files metadata from the database.
-    """
-    ensure_chat_and_file_tables(db_conn)
-    cur: sqlite3.Cursor = db_conn.cursor()
-    cur.execute(
-        "SELECT id, filename, saved_name, size_bytes, uploader, timestamp FROM shared_files ORDER BY id DESC;"
-    )
-    rows = cur.fetchall()
-    return [
-        {
-            "id": row[0],
-            "filename": row[1],
-            "saved_name": row[2],
-            "size_bytes": row[3],
-            "uploader": row[4],
-            "timestamp": str(row[5]),
-        }
-        for row in rows
-    ]
-
-
-def delete_shared_file(db_conn: sqlite3.Connection, file_id: int) -> dict[str, Any] | None:
-    """
-    Delete a shared file entry by ID and return its saved_name.
-    """
-    ensure_chat_and_file_tables(db_conn)
-    cur: sqlite3.Cursor = db_conn.cursor()
-    cur.execute("SELECT id, saved_name FROM shared_files WHERE id = ?;", (file_id,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    cur.execute("DELETE FROM shared_files WHERE id = ?;", (file_id,))
-    return {"id": row[0], "saved_name": row[1]}
