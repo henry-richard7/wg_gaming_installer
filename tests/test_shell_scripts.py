@@ -67,3 +67,21 @@ def test_verify_go_checksum(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setitem(shell_scripts._GO_SHA256, shell_scripts._go_arch(), "0" * 64)
     with pytest.raises(RuntimeError, match="checksum mismatch"):
         _verify_go_checksum(tarball)
+
+
+def test_format_bytes() -> None:
+    assert shell_scripts.format_bytes(0) == "0 B"
+    assert shell_scripts.format_bytes(512) == "512 B"
+    assert shell_scripts.format_bytes(1024) == "1.0 KB"
+    assert shell_scripts.format_bytes(1048576) == "1.0 MB"
+    assert shell_scripts.format_bytes(1073741824) == "1.0 GB"
+
+
+def test_format_relative_time() -> None:
+    assert shell_scripts.format_relative_time(0) == "Never"
+    import time
+
+    now = int(time.time())
+    assert shell_scripts.format_relative_time(now - 5) == "Just now"
+    assert shell_scripts.format_relative_time(now - 120) == "2m ago"
+    assert shell_scripts.format_relative_time(now - 7200) == "2h ago"

@@ -281,7 +281,7 @@ def stop_service() -> dict[str, str]:
 @app.get("/api/peers")
 def list_peers() -> list[dict[str, Any]]:
     """
-    Get all configured WireGuard peers.
+    Get all configured WireGuard peers enriched with live traffic & handshake stats.
     """
     db_path = _PATHS.server_conf_db_path
     if not db_path.exists():
@@ -289,18 +289,37 @@ def list_peers() -> list[dict[str, Any]]:
 
     with conf_db_connected(db_path=db_path) as conn:
         peers: list[PeerConfig] = read_all_peer_configs(conn)
+        wg_config = read_wg_config(conn)
 
-    return [
-        {
-            "name": p.name,
-            "ipv4": str(p.ipv4),
-            "ipv6": str(p.ipv6) if p.ipv6 else None,
-            "dns": [str(d) for d in p.dns],
-            "public_key": p.public_key,
-            "forward_ports": p.forward_ports_str.split(",") if p.forward_ports_str else [],
-        }
-        for p in peers
-    ]
+    wg_stats: dict[str, dict[str, Any]] = {}
+    if wg_config:
+        try:
+            from wg_gaming_installer.shell_scripts import get_wg_peer_stats
+
+            wg_stats = get_wg_peer_stats(wg_config.wg_name)
+        except Exception:
+            wg_stats = {}
+
+    result: list[dict[str, Any]] = []
+    for p in peers:
+        p_stats = wg_stats.get(p.public_key, {})
+        result.append(
+            {
+                "name": p.name,
+                "ipv4": str(p.ipv4),
+                "ipv6": str(p.ipv6) if p.ipv6 else None,
+                "dns": [str(d) for d in p.dns],
+                "public_key": p.public_key,
+                "forward_ports": p.forward_ports_str.split(",") if p.forward_ports_str else [],
+                "online": p_stats.get("online", False),
+                "latest_handshake_relative": p_stats.get("latest_handshake_relative", "Never"),
+                "transfer_rx_formatted": p_stats.get("transfer_rx_formatted", "0 B"),
+                "transfer_tx_formatted": p_stats.get("transfer_tx_formatted", "0 B"),
+                "endpoint": p_stats.get("endpoint", None),
+            }
+        )
+
+    return result
 
 
 @app.post("/api/peers")

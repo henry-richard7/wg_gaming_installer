@@ -665,3 +665,99 @@ def get_wg_service_status(wg_nic_name: str) -> ServiceStatus:
 
     status = result.stdout.strip().lower()
     return _SERVICE_STATUS_MAP.get(status, ServiceStatus.UNKNOWN)
+
+
+def format_bytes(bytes_count: int) -> str:
+    """
+    Format byte counts into human-readable strings (B, KB, MB, GB, TB).
+    """
+    if bytes_count <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(bytes_count)
+    unit_idx = 0
+    while size >= 1024 and unit_idx < len(units) - 1:
+        size /= 1024.0
+        unit_idx += 1
+    if unit_idx == 0:
+        return f"{int(size)} B"
+    return f"{size:.1f} {units[unit_idx]}"
+
+
+def format_relative_time(timestamp: int) -> str:
+    """
+    Format a Unix timestamp into a relative time string (e.g. 'Just now', '2m ago', '1h ago', 'Never').
+    """
+    if timestamp <= 0:
+        return "Never"
+    import time
+
+    now = int(time.time())
+    diff = now - timestamp
+    if diff < 0 or diff < 10:
+        return "Just now"
+    if diff < 60:
+        return f"{diff}s ago"
+    if diff < 3600:
+        return f"{diff // 60}m ago"
+    if diff < 86400:
+        return f"{diff // 3600}h ago"
+    return f"{diff // 86400}d ago"
+
+
+def get_wg_peer_stats(wg_nic_name: str) -> dict[str, dict[str, Any]]:
+    """
+    Get live WireGuard peer stats (transfer rx/tx, last handshake, endpoint) keyed by public_key.
+    """
+    stats: dict[str, dict[str, Any]] = {}
+    if shutil.which("wg") is None:
+        return stats
+
+    try:
+        res = subprocess.run(
+            ["wg", "show", wg_nic_name, "dump"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0:
+            return stats
+    except Exception:
+        return stats
+
+    lines = res.stdout.strip().splitlines()
+    for line in lines[1:]:
+        parts = line.strip().split("\t")
+        if len(parts) >= 8:
+            pub_key = parts[0]
+            endpoint = parts[2] if parts[2] != "(none)" else None
+            try:
+                handshake = int(parts[4])
+            except ValueError:
+                handshake = 0
+            try:
+                rx = int(parts[5])
+            except ValueError:
+                rx = 0
+            try:
+                tx = int(parts[6])
+            except ValueError:
+                tx = 0
+
+            import time
+
+            is_online = (handshake > 0) and ((int(time.time()) - handshake) <= 180)
+
+            stats[pub_key] = {
+                "public_key": pub_key,
+                "endpoint": endpoint,
+                "latest_handshake": handshake,
+                "latest_handshake_relative": format_relative_time(handshake),
+                "transfer_rx": rx,
+                "transfer_rx_formatted": format_bytes(rx),
+                "transfer_tx": tx,
+                "transfer_tx_formatted": format_bytes(tx),
+                "online": is_online,
+            }
+
+    return stats

@@ -708,16 +708,28 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 
             grid.innerHTML = peers.map(peer => {
                 const portsStr = peer.forward_ports && peer.forward_ports.length > 0 ? peer.forward_ports.join(', ') : 'None';
+                const isOnline = peer.online;
+                const statusClass = isOnline ? 'status-active' : 'status-inactive';
+                const statusText = isOnline ? 'Online' : 'Offline';
                 return `
                     <div class="peer-card">
                         <div class="peer-header">
-                            <div class="peer-name">${escapeHtml(peer.name)}</div>
-                            <span class="tag">${escapeHtml(peer.ipv4)}</span>
+                            <div>
+                                <div class="peer-name">${escapeHtml(peer.name)}</div>
+                                <span class="tag" style="margin-top: 4px;">${escapeHtml(peer.ipv4)}</span>
+                            </div>
+                            <span class="status-badge ${statusClass}" style="padding: 4px 10px; font-size: 0.75rem;">
+                                <span class="status-dot"></span>${statusText}
+                            </span>
                         </div>
                         <div class="peer-info">
                             <div class="info-row">
-                                <span class="info-label">IPv6:</span>
-                                <span class="info-value">${peer.ipv6 ? escapeHtml(peer.ipv6) : 'Disabled'}</span>
+                                <span class="info-label">Traffic Rx / Tx:</span>
+                                <span class="info-value" style="color: #6ee7b7;">⬇️ ${escapeHtml(peer.transfer_rx_formatted || '0 B')} / ⬆️ ${escapeHtml(peer.transfer_tx_formatted || '0 B')}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Last Handshake:</span>
+                                <span class="info-value">${escapeHtml(peer.latest_handshake_relative || 'Never')}</span>
                             </div>
                             <div class="info-row">
                                 <span class="info-label">DNS:</span>
