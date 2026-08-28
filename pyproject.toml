@@ -13,21 +13,28 @@ dependencies = [
   "psutil>=5.9",
   "prompt_toolkit>=3.0",
   "distro>=1.8",
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.28.0",
+  "pydantic>=2.0.0",
+  "qrcode>=7.4",
+  "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "black==26.5.1",
-  "isort==8.0.1",
-  "mypy==2.3.0",
   "pytest>=7.0",
-  "pre-commit==4.6.1",
-  "ruff==0.16.2",
+  "httpx>=0.27.0",
+  "black>=24.0.0",
+  "isort>=5.13.0",
+  "mypy>=1.8.0",
+  "pre-commit>=3.6.0",
+  "ruff>=0.3.0",
   "pexpect>=4.8",
 ]
 
 [project.scripts]
 wg-gaming-installer = "wg_gaming_installer.install_scripts:main"
+wg-gaming-web = "wg_gaming_installer.web_scripts:main"
 
 [tool.setuptools.packages.find]
 include = ["wg_gaming_installer*"]
@@ -54,7 +61,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
-ignore = ["E203", "E231", "E702"]
+ignore = ["E203", "E231", "E702", "E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

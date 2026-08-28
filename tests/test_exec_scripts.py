@@ -1,5 +1,6 @@
 """Tests for wg_gaming_installer.exec_scripts."""
 
+import os
 from ipaddress import IPv4Address, IPv4Interface, IPv6Address, IPv6Interface
 from pathlib import Path
 
@@ -62,7 +63,8 @@ def test_create_wg_config(tmp_path: Path) -> None:
     assert "Address = 10.66.66.1/24, fd42:42:42::1/120" in content
     assert "[Peer] # peer1" in content
     assert "AllowedIPs = 10.66.66.2/32, fd42:42:42::2/128" in content
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_create_wg_config_custom_mtu(tmp_path: Path) -> None:
@@ -118,7 +120,8 @@ def test_create_start_script(tmp_path: Path) -> None:
     assert content.startswith("#!")
     assert "net.ipv4.ip_forward=1" in content
     assert "net.ipv6.conf.all.forwarding=1" in content
-    assert path.stat().st_mode & 0o777 == 0o700
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o700
 
 
 def test_create_stop_script(tmp_path: Path) -> None:
@@ -128,7 +131,8 @@ def test_create_stop_script(tmp_path: Path) -> None:
     assert content.startswith("#!")
     assert "nft delete table ip wg_nat || true" in content
     assert "nft delete table ip6 wg_nat || true" in content
-    assert path.stat().st_mode & 0o777 == 0o700
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o700
 
 
 def test_create_nftables_config(tmp_path: Path) -> None:
@@ -139,4 +143,5 @@ def test_create_nftables_config(tmp_path: Path) -> None:
     assert "table ip6 wg_nat {" in content
     assert "dnat to 10.66.66.2;" in content
     assert "dnat to fd42:42:42::2;" in content
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600

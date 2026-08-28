@@ -121,7 +121,7 @@ def _uninstall_delete_folders() -> None:
     delete_folders([_PATHS.wg_conf_folder])
 
 
-def _create_wg_peer_str(
+def create_wg_peer_str(
     peer: PeerConfig, server_config: ServerIFConfig, wg_config: ServerWGConfig
 ) -> str:
     """
@@ -151,6 +151,9 @@ def _create_wg_peer_str(
     peer_wg_conf_str += "\n"
 
     return peer_wg_conf_str
+
+
+_create_wg_peer_str = create_wg_peer_str
 
 
 # InstallStatus -> starting index into _FULL_INSTALL_STEPS

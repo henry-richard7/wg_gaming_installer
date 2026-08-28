@@ -51,6 +51,7 @@ _GO_VERSION: str = "1.26.5"
 
 _GO_ARCH_MAP: dict[str, str] = {
     'x86_64': 'amd64',
+    'amd64': 'amd64',
     'aarch64': 'arm64',
     'i686': '386',
 }

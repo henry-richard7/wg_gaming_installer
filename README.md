@@ -5,6 +5,7 @@ Lightweight installer/manager for a personal WireGuard server with optional port
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Web UI Dashboard](#web-ui-dashboard)
 - [Why the Python version](#why-the-python-version)
 - [Supported platforms](#supported-platforms)
 - [Prerequisites](#prerequisites)
@@ -17,24 +18,39 @@ Lightweight installer/manager for a personal WireGuard server with optional port
 
 ## Quick Start
 
-Clone, create a venv, install, and run the installer (as `root`, `sudo -i` before running the following):
+### 1-Command Setup (Recommended)
+
+Run as `root` (`sudo -i`):
 
 ```bash
 git clone https://github.com/xiahualiu/wg_gaming_installer.git
 cd wg_gaming_installer
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-pip install -e .
-wg-gaming-installer
+chmod +x setup.sh
+./setup.sh
 ```
 
-If you want to manage an existing installation:
+`setup.sh` automatically installs `uv` (if missing), resolves and syncs all dependencies in seconds, and prepares both the CLI installer and Web UI.
 
-```bash
-cd wg_gaming_installer
-source ./.venv/bin/activate
-wg-gaming-installer
-```
+### Running with `uv`
+
+- **Launch Interactive CLI Menu**:
+  ```bash
+  uv run wg-gaming-installer
+  ```
+
+- **Launch Web Control Panel**:
+  ```bash
+  uv run wg-gaming-web --host 0.0.0.0 --port 8000
+  ```
+
+## Web UI Dashboard
+
+WireGuard Gaming Installer includes a built-in modern web control panel:
+
+- 📊 **Real-time Server Metrics**: Status, Listen Port, Public IP, MTU, and Active Peers.
+- 📱 **QR Code & Config Download**: One-click WireGuard `.conf` file downloads and mobile QR code scanner.
+- 🎮 **Gaming Port Forwarding**: Effortlessly add and view nftables DNAT port forward rules per peer.
+- ⚡ **Instant Peer Management**: Add, edit, or delete peers visually.
 
 ## Why the Python version
 
@@ -74,9 +90,9 @@ After installation, the interactive menu provides these actions:
 
 ## Port forwarding
 
-The installer can add nftables DNAT rules that forward chosen public ports to a peer's WireGuard IP (IPv4/IPv6 supported). This is useful to host game servers or fix client NAT.
+The installer adds nftables DNAT rules that forward chosen public ports to a peer's WireGuard IP (IPv4 & IPv6 supported). **Both TCP and UDP protocols are supported and forwarded automatically** for all specified ports (essential for game servers, voice chat, and peer-to-peer multiplayer).
 
-Example: forward TCP `25565` to `10.66.66.2:25565` so `SERVER_PUBLIC_IP:25565` reaches the peer.
+Example: forwarding `25565` forwards both TCP and UDP `25565` from `SERVER_PUBLIC_IP:25565` to `10.66.66.2:25565`.
 
 Important: do not forward ports already used by server-local services (SSH, etc.).
 
