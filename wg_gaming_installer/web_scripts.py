@@ -499,7 +499,7 @@ def delete_peer(peer_name: str) -> dict[str, str]:
 
 
 @app.get("/api/peers/{peer_name}/config", dependencies=[Depends(verify_credentials)])
-def get_peer_config(peer_name: str) -> Response:
+def get_peer_config(peer_name: str, split_tunnel: bool = False) -> Response:
     """
     Get raw WireGuard configuration text string for a peer.
     """
@@ -516,27 +516,33 @@ def get_peer_config(peer_name: str) -> Response:
         if not peer or not wg_config or not server_config:
             raise HTTPException(status_code=404, detail=f"Peer '{peer_name}' or server config not found.")
 
-        conf_str = create_wg_peer_str(peer=peer, server_config=server_config, wg_config=wg_config)
+        conf_str = create_wg_peer_str(
+            peer=peer,
+            server_config=server_config,
+            wg_config=wg_config,
+            split_tunnel=split_tunnel,
+        )
 
     return Response(content=conf_str, media_type="text/plain")
 
 
 @app.get("/api/peers/{peer_name}/download", dependencies=[Depends(verify_credentials)])
-def download_peer_config(peer_name: str) -> Response:
+def download_peer_config(peer_name: str, split_tunnel: bool = False) -> Response:
     """
     Download client WireGuard configuration as a `.conf` file attachment.
     """
-    conf_response = get_peer_config(peer_name)
-    conf_response.headers["Content-Disposition"] = f'attachment; filename="{peer_name}.conf"'
+    conf_response = get_peer_config(peer_name, split_tunnel=split_tunnel)
+    suffix = "_split" if split_tunnel else ""
+    conf_response.headers["Content-Disposition"] = f'attachment; filename="{peer_name}{suffix}.conf"'
     return conf_response
 
 
 @app.get("/api/peers/{peer_name}/qr", dependencies=[Depends(verify_credentials)])
-def get_peer_qr(peer_name: str) -> dict[str, str]:
+def get_peer_qr(peer_name: str, split_tunnel: bool = False) -> dict[str, str]:
     """
     Generate a base64 data URL of the WireGuard QR code for a peer.
     """
-    conf_response = get_peer_config(peer_name)
+    conf_response = get_peer_config(peer_name, split_tunnel=split_tunnel)
     conf_text = conf_response.body.decode("utf-8")
 
     try:
@@ -559,7 +565,7 @@ def get_peer_qr(peer_name: str) -> dict[str, str]:
 
 
 @app.get("/api/peers/export/zip", dependencies=[Depends(verify_credentials)])
-def export_peers_zip() -> Response:
+def export_peers_zip(split_tunnel: bool = False) -> Response:
     """
     Export all peer WireGuard .conf files and QR code SVG images as a single ZIP archive.
     """
@@ -578,7 +584,12 @@ def export_peers_zip() -> Response:
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for peer in peers:
-            conf_str = create_wg_peer_str(peer=peer, server_config=server_config, wg_config=wg_config)
+            conf_str = create_wg_peer_str(
+                peer=peer,
+                server_config=server_config,
+                wg_config=wg_config,
+                split_tunnel=split_tunnel,
+            )
             zf.writestr(f"{peer.name}.conf", conf_str)
 
             try:

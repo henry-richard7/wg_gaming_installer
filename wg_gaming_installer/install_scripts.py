@@ -122,7 +122,10 @@ def _uninstall_delete_folders() -> None:
 
 
 def create_wg_peer_str(
-    peer: PeerConfig, server_config: ServerIFConfig, wg_config: ServerWGConfig
+    peer: PeerConfig,
+    server_config: ServerIFConfig,
+    wg_config: ServerWGConfig,
+    split_tunnel: bool = False,
 ) -> str:
     """
     Generate a WireGuard configuration str for a peer.
@@ -140,10 +143,16 @@ def create_wg_peer_str(
     peer_wg_conf_str += "[Peer]\n"
     peer_wg_conf_str += f"PublicKey = {wg_config.public_key}\n"
     peer_wg_conf_str += f"PresharedKey = {peer.preshared_key}\n"
-    if wg_config.ipv6:
-        peer_wg_conf_str += "AllowedIPs = 0.0.0.0/0,::/0\n"
+    if split_tunnel:
+        if wg_config.ipv6:
+            peer_wg_conf_str += f"AllowedIPs = {wg_config.ipv4.network!s}, {wg_config.ipv6.network!s}\n"
+        else:
+            peer_wg_conf_str += f"AllowedIPs = {wg_config.ipv4.network!s}\n"
     else:
-        peer_wg_conf_str += "AllowedIPs = 0.0.0.0/0\n"
+        if wg_config.ipv6:
+            peer_wg_conf_str += "AllowedIPs = 0.0.0.0/0,::/0\n"
+        else:
+            peer_wg_conf_str += "AllowedIPs = 0.0.0.0/0\n"
     peer_wg_conf_str += f"Endpoint = {server_config.nic_ipv4!s}"
     peer_wg_conf_str += ":"
     peer_wg_conf_str += f"{wg_config.listen_port}\n"

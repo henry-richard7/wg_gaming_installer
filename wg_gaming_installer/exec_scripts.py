@@ -149,7 +149,7 @@ def create_nftables_config(
         # IPv4 NAT table with chains and rules inside chain blocks
         f.write('table ip wg_nat {\n')
 
-        # SNAT masquerade rule
+        # SNAT masquerade rules
         f.write(
             '    chain postrouting { type nat hook postrouting priority srcnat; '
             'policy accept;\n'
@@ -157,6 +157,10 @@ def create_nftables_config(
         f.write(
             f'        iifname "{wg_config.wg_name}" oifname '
             f'"{server_config.nic_name}" masquerade;\n'
+        )
+        f.write(
+            f'        iifname "{server_config.nic_name}" oifname '
+            f'"{wg_config.wg_name}" masquerade;\n'
         )
         f.write('    }\n')
 
@@ -183,7 +187,7 @@ def create_nftables_config(
         if wg_config.ipv6:
             f.write('table ip6 wg_nat {\n')
 
-            # IPv6 SNAT masquerade rule
+            # IPv6 SNAT masquerade rules
             f.write(
                 '    chain postrouting { type nat hook postrouting priority srcnat; '
                 'policy accept;\n'
@@ -191,6 +195,10 @@ def create_nftables_config(
             f.write(
                 f'        iifname "{wg_config.wg_name}" oifname '
                 f'"{server_config.nic_name}" masquerade;\n'
+            )
+            f.write(
+                f'        iifname "{server_config.nic_name}" oifname '
+                f'"{wg_config.wg_name}" masquerade;\n'
             )
             f.write('    }\n')
 

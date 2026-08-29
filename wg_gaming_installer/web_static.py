@@ -627,6 +627,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div class="modal-title" id="qrModalTitle">Peer WireGuard Configuration</div>
                 <button class="close-btn" onclick="closeModal('qrModal')">&times;</button>
             </div>
+            <div style="margin: 10px 0 16px 0; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px 14px; border-radius: var(--radius-sm);">
+                <label style="font-size: 0.85rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="splitTunnelToggle" onchange="onSplitTunnelToggleChanged()">
+                    🔀 Enable Split Tunneling (Route VPN Subnet only)
+                </label>
+            </div>
             <div class="qr-container">
                 <img id="qrImage" class="qr-image" src="" alt="WireGuard QR Code">
                 <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">Scan with mobile WireGuard App or download client config below.</div>
@@ -642,6 +648,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     <script>
         let currentStatus = null;
         let currentPeers = [];
+        let currentActivePeerName = '';
+        let currentSplitTunnel = false;
 
         async function fetchStatus() {
             try {
@@ -860,25 +868,36 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
-        async function showQrModal(peerName) {
+        async function showQrModal(peerName, isSplit = false) {
+            currentActivePeerName = peerName;
+            currentSplitTunnel = isSplit;
             try {
                 document.getElementById('qrModalTitle').textContent = `WireGuard Config - ${peerName}`;
-                const qrRes = await fetch(`/api/peers/${encodeURIComponent(peerName)}/qr`);
+                document.getElementById('splitTunnelToggle').checked = isSplit;
+                const splitParam = isSplit ? '?split_tunnel=true' : '';
+                const qrRes = await fetch(`/api/peers/${encodeURIComponent(peerName)}/qr${splitParam}`);
                 const qrData = await qrRes.json();
 
-                const confRes = await fetch(`/api/peers/${encodeURIComponent(peerName)}/config`);
+                const confRes = await fetch(`/api/peers/${encodeURIComponent(peerName)}/config${splitParam}`);
                 const confText = await confRes.text();
 
                 document.getElementById('qrImage').src = qrData.qr_url;
                 document.getElementById('confText').textContent = confText;
 
                 const downloadLink = document.getElementById('downloadConfLink');
-                downloadLink.href = `/api/peers/${encodeURIComponent(peerName)}/download`;
-                downloadLink.download = `${peerName}.conf`;
+                downloadLink.href = `/api/peers/${encodeURIComponent(peerName)}/download${splitParam}`;
+                downloadLink.download = `${peerName}${isSplit ? '_split' : ''}.conf`;
 
                 document.getElementById('qrModal').classList.add('active');
             } catch (err) {
                 alert("Failed to load QR code/config: " + err);
+            }
+        }
+
+        function onSplitTunnelToggleChanged() {
+            const isSplit = document.getElementById('splitTunnelToggle').checked;
+            if (currentActivePeerName) {
+                showQrModal(currentActivePeerName, isSplit);
             }
         }
 

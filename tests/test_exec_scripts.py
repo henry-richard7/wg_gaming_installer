@@ -141,6 +141,8 @@ def test_create_nftables_config(tmp_path: Path) -> None:
     content = path.read_text()
     assert "table ip wg_nat {" in content
     assert "table ip6 wg_nat {" in content
+    assert 'iifname "wg0" oifname "eth0" masquerade;' in content
+    assert 'iifname "eth0" oifname "wg0" masquerade;' in content
     assert "dnat to 10.66.66.2;" in content
     assert "dnat to fd42:42:42::2;" in content
     if os.name != "nt":
@@ -155,3 +157,18 @@ def test_paths_properties() -> None:
     assert p.nftables_conf_path.name == "wg.nft"
     assert p.start_script_path.name == "wg_start.sh"
     assert p.stop_script_path.name == "wg_stop.sh"
+
+
+def test_create_wg_peer_str_split_tunnel() -> None:
+    from wg_gaming_installer.install_scripts import create_wg_peer_str
+
+    server_wg = make_wg_config(has_ipv6=True)
+    server_nic = make_server_config()
+    peer = make_peer()
+
+    full_conf = create_wg_peer_str(peer, server_nic, server_wg, split_tunnel=False)
+    assert "AllowedIPs = 0.0.0.0/0,::/0" in full_conf
+
+    split_conf = create_wg_peer_str(peer, server_nic, server_wg, split_tunnel=True)
+    assert "AllowedIPs = 10.66.66.0/24, fd42:42:42::/120" in split_conf
+

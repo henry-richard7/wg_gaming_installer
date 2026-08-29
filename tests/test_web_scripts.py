@@ -140,13 +140,23 @@ def test_peer_crud_lifecycle(mock_db: Path) -> None:
     assert peers[0]["name"] == "gamer-pc"
     assert peers[0]["forward_ports"] == ["25565", "27015-27030"]
 
-    # 4. Download config & QR code
+    # 4. Download config & QR code (Full tunneling default)
     conf_res = client.get("/api/peers/gamer-pc/config", auth=auth)
     assert conf_res.status_code == 200
     assert "[Interface]" in conf_res.text
     assert "[Peer]" in conf_res.text
+    assert "AllowedIPs = 0.0.0.0/0,::/0" in conf_res.text
 
-    qr_res = client.get("/api/peers/gamer-pc/qr", auth=auth)
+    # 4b. Download config with split tunneling enabled
+    conf_split_res = client.get("/api/peers/gamer-pc/config?split_tunnel=true", auth=auth)
+    assert conf_split_res.status_code == 200
+    assert "AllowedIPs = 10.66.66.0/24, fd42:42:42::/120" in conf_split_res.text
+
+    dl_split_res = client.get("/api/peers/gamer-pc/download?split_tunnel=true", auth=auth)
+    assert dl_split_res.status_code == 200
+    assert "gamer-pc_split.conf" in dl_split_res.headers.get("Content-Disposition", "")
+
+    qr_res = client.get("/api/peers/gamer-pc/qr?split_tunnel=true", auth=auth)
     assert qr_res.status_code == 200
     assert qr_res.json()["qr_url"].startswith("data:image/")
 
